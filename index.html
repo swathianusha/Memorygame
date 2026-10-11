@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Memory Game</h2>
+        <div class="controls">
+            <select id="difficulty">
+                <option value="16">Easy (4x4)</option>
+                <option value="36">Hard (6x6)</option>
+            </select>
+            <select id="theme">
+                <option value="emojis">Emojis</option>
+                <option value="numbers">Numbers</option>
+                <option value="letters">Letters</option>
+            </select>
+            <button id="hint-btn" class="hint-btn">Hint (1s)</button>
+            <button id="music-btn" class="music-btn">🎵 Off</button>
+        </div>
+        <div class="stats">
+            <span>Moves: <b id="move-count">0</b></span>
+            <span>Time: <b id="timer">0s</b></span>
+        </div>
+        <div class="high-score">
+            <span>Best: <b id="best-score">--</b></span>
+        </div>
+        <div class="game" id="game-board"></div>
+        <button class="reset" onclick="window.location.reload();">Reset Game</button>
+    </div>
+    <div id="game-over-modal" class="modal">
+        <div class="modal-content">
+            <h3>Victory!</h3>
+            <p>You matched them all!</p>
+            <div class="final-stats">
+                <p>Total Moves: <span id="final-moves">0</span></p>
+                <p>Total Time: <span id="final-time">0s</span></p>
+            </div>
+            <button class="reset" onclick="window.location.reload();">Play Again</button>
+        </div>
+    </div>
+    <script>
+        const themes = {
+            emojis: ["😀", "😂", "😍", "🥰", "😎", "🤩", "🥳", "😜", "🍕", "🍔", "🍦", "🎸", "🚀", "💎", "🌈", "🔥", "🦄", "👾"],
+            numbers: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18"],
+            letters: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"]
+        };
+        const difficultySelect = document.getElementById('difficulty');
+        const themeSelect = document.getElementById('theme');
+        const bestScoreDisplay = document.getElementById('best-score');
+        const hintBtn = document.getElementById('hint-btn');
+        const musicBtn = document.getElementById('music-btn');
+        const modal = document.getElementById('game-over-modal');
+        const savedDifficulty = localStorage.getItem('gameDifficulty') || "16";
+        const savedTheme = localStorage.getItem('gameTheme') || "emojis";
+        difficultySelect.value = savedDifficulty;
+        themeSelect.value = savedTheme;
+        const highScoreKey = `bestScore_${savedDifficulty}_${savedTheme}`;
+        function loadBestScore() {
+            const currentKey = `bestScore_${difficultySelect.value}_${themeSelect.value}`;
+            const savedBest = localStorage.getItem(currentKey);
+            bestScoreDisplay.innerHTML = savedBest ? savedBest + " moves" : "--";
+        }
+        loadBestScore();
+        difficultySelect.onchange = function () {
+            localStorage.setItem('gameDifficulty', this.value);
+            window.location.reload();
+        };
+        themeSelect.onchange = function () {
+            localStorage.setItem('gameTheme', this.value);
+            window.location.reload();
+        };
+        const totalCards = parseInt(savedDifficulty);
+        const pairCount = totalCards / 2;
+        const selectedSet = themes[savedTheme].slice(0, pairCount);
+        const gameItems = [...selectedSet, ...selectedSet];
+        var shuf_items = gameItems.sort(() => (Math.random() > 0.5) ? 1 : -1);
+        let moves = 0;
+        let seconds = 0;
+        let timerInterval = null;
+        let gameStarted = false;
+        let isHinting = false;
+        const matchSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3');
+        const winSound = new Audio('https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3');
+        const bgMusic = new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3');
+        bgMusic.loop = true;
+        bgMusic.volume = 0.3;
+        musicBtn.onclick = function () {
+            if (bgMusic.paused) {
+                bgMusic.play();
+                musicBtn.innerHTML = "🎵 On";
+                musicBtn.classList.add('active');
+            } else {
+                bgMusic.pause();
+                musicBtn.innerHTML = "🎵 Off";
+                musicBtn.classList.remove('active');
+            }
+        };
+        const gameBoard = document.getElementById('game-board');
+        if (totalCards === 36) {
+            gameBoard.classList.add('hard-mode');
+        }
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                seconds++;
+                document.getElementById('timer').innerHTML = seconds + "s";
+            }, 1000);
+        }
+        hintBtn.onclick = function () {
+            if (isHinting || document.querySelectorAll('.boxMatch').length === gameItems.length) return;
+            isHinting = true;
+            hintBtn.disabled = true;
+            const items = document.querySelectorAll('.item');
+            items.forEach(item => { if (!item.classList.contains('boxMatch')) item.classList.add('boxOpen'); });
+            setTimeout(() => {
+                items.forEach(item => { if (!item.classList.contains('boxMatch')) item.classList.remove('boxOpen'); });
+                isHinting = false;
+            }, 1000);
+        };
+        function updateHighScore() {
+            const currentKey = `bestScore_${difficultySelect.value}_${themeSelect.value}`;
+            const currentBest = localStorage.getItem(currentKey);
+            if (!currentBest || moves < parseInt(currentBest)) {
+                localStorage.setItem(currentKey, moves);
+                bestScoreDisplay.innerHTML = moves + " moves (New Best!)";
+            }
+        }
+        for (var i = 0; i < gameItems.length; i++) {
+            let box = document.createElement('div');
+            box.className = 'item';
+            box.innerHTML = `<span>${shuf_items[i]}</span><div class="badge">MATCHED</div>`;
+            box.onclick = function () {
+                if (isHinting || this.classList.contains('boxOpen') || this.classList.contains('boxMatch')) return;
+                if (!gameStarted) { gameStarted = true; startTimer(); }
+                this.classList.add('boxOpen');
+                setTimeout(function () {
+                    let openBoxes = document.querySelectorAll('.boxOpen');
+                    if (openBoxes.length > 1) {
+                        moves++;
+                        document.getElementById('move-count').innerHTML = moves;
+                        if (openBoxes[0].querySelector('span').innerHTML == openBoxes[1].querySelector('span').innerHTML) {
+                            matchSound.play();
+                            openBoxes[0].classList.add('boxMatch');
+                            openBoxes[1].classList.add('boxMatch');
+                            openBoxes[0].classList.remove('boxOpen');
+                            openBoxes[1].classList.remove('boxOpen');
+                            if (document.querySelectorAll('.boxMatch').length == gameItems.length) {
+                                clearInterval(timerInterval);
+                                winSound.play();
+                                updateHighScore();
+                                document.getElementById('final-moves').innerText = moves;
+                                document.getElementById('final-time').innerText = seconds + "s";
+                                modal.style.display = "flex";
+                            }
+                        } else {
+                            openBoxes[0].classList.remove('boxOpen');
+                            openBoxes[1].classList.remove('boxOpen');
+                        }
+                    }
+                }, 500);
+            }
+            gameBoard.appendChild(box);
+        }
+    </script>
+</body>
+</html>
